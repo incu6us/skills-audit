@@ -1,23 +1,128 @@
 # skill-audit
 
-Static security check for AI agent skills (Claude Code, Cursor, Codex, ...).
-It reads a skill and never runs any of its code.
+Static security check for AI agent skills, plugins and agent config (Claude
+Code, Cursor, Codex, ...). It reads files and never runs any of their code.
+
+## Install
 
 ```sh
-go build -o skill-audit .
+go build -o skill-audit .          # Go 1.24+, no dependencies
+```
+
+## Usage
+
+```
+skill-audit [flags] <target>                       # one skill, plugin or repo
+skill-audit [flags] -installed [-projects <dir>]   # everything installed, and/or every repo under dir
+skill-audit [flags] -projects <dir>
+```
+
+**Flags go before the target.** Go's flag parsing stops at the first non-flag
+argument: in `skill-audit ./x -json`, the `-json` is ignored.
+
+### Targets
+
+| Form | Example |
+|---|---|
+| Local folder or single file | `~/.claude/skills/pdf`, `./SKILL.md` |
+| GitHub repo | `https://github.com/owner/repo`, `github.com/owner/repo` |
+| Folder or file in a repo, at a ref | `https://github.com/owner/repo/tree/main/skills/pdf`, `…/blob/v1.2/SKILL.md` |
+| Any git remote | `https://git.example.com/x.git`, `git@github.com:owner/repo.git` |
+
+Remote targets are fetched shallowly into a temp dir and deleted afterwards
+(see [What it checks](#what-it-checks)). The ref in a `tree/` or `blob/` URL
+must be one path segment: for a branch with `/` in its name, pass the plain
+repo URL.
+
+### Flags
+
+| Flag | Meaning |
+|---|---|
+| `-installed` | Audit everything installed: see [Installed targets](#installed-targets). Can't be combined with a target. |
+| `-projects <dir>` | Audit the agent config of every repo under `<dir>`: see [Projects](#projects). Combines with `-installed`. |
+| `-json` | Print JSON instead of text: see [Output](#output). |
+| `-v` | Also print info findings (every URL and email). With `-installed` or `-projects`, also list passing targets. |
+| `-offline` | Skip the dependency CVE lookup, the only network call besides fetching a remote target. |
+| `-history <N>` | List the last N commits that touched the target, with authors and files. Single targets only; ignored with `-installed`/`-projects`. |
+| `-baseline <file>` | Hide findings already accepted in `<file>`. |
+| `-write-baseline <file>` | Accept every current finding: save their fingerprints to `<file>`. Still prints the report and exits with the real verdict. |
+| `-h` | Show usage. |
+
+### Examples
+
+```sh
 ./skill-audit ~/.claude/skills/some-skill
 ./skill-audit https://github.com/owner/repo/tree/main/skills/some-skill
 ./skill-audit -history 10 -json github.com/owner/repo
-./skill-audit -offline ./local-skill    # no CVE lookup
+./skill-audit -offline ./local-skill                 # no CVE lookup
+
+./skill-audit -installed                             # one line per target needing attention
+./skill-audit -installed -v                          # ...and the passing ones
+./skill-audit -projects ~/workspace                  # agent config in every repo
+./skill-audit -installed -projects ~/workspace -json > audit.json
 ```
 
-### Everything installed, and only what's new
+### Baselines: only what's new
 
 ```sh
-./skill-audit -installed                      # one line per skill/plugin needing attention
 ./skill-audit -installed -write-baseline ~/.skill-audit-baseline.json   # after reviewing: accept
 ./skill-audit -installed -baseline ~/.skill-audit-baseline.json         # later: only new findings
 ```
+
+A baseline entry is the target's name, rule, file and the flagged code, not
+the line number. Edits elsewhere and plugin version bumps don't resurface
+accepted findings; a change to the flagged code or a new advisory does.
+Baselines for single targets are per target. The file is JSON (a sorted list
+of fingerprints), safe to commit: it holds hashes, not code.
+
+### Output
+
+**Text** (default): the target, the commit SHA for remote or git targets (pin
+installs to it), then each finding as severity, rule, `file:line`, message and
+a snippet, then the endpoints the target refers to, notes (skipped checks,
+CVE lookup summary, baseline), and the verdict. Info findings are counted but
+hidden unless `-v`.
+
+With `-installed`/`-projects`, one line per target that needs attention,
+worst first, with the command that shows its details:
+
+```
+VERDICT CRIT HIGH  MED  LOW  TARGET
+REVIEW     0    2    1   15  claude/skills/terraform-skill
+                                  skill-audit "/Users/you/.claude/skills/terraform-skill"
+
+49 targets: 0 block, 1 review, 48 pass; -v lists passing targets
+```
+
+**JSON** (`-json`): for a single target, one report object:
+
+```json
+{
+  "target": "…", "commit": "…", "files_scanned": 12, "verdict": "REVIEW",
+  "counts": {"HIGH": 1, "LOW": 3},
+  "findings": [{"rule": "pipe-to-shell", "category": "remote-exec", "severity": "HIGH",
+                "file": "SKILL.md", "line": 41, "message": "…", "snippet": "…"}],
+  "endpoints": [{"name": "github.com", "count": 2}],
+  "notes": ["…"], "baselined": 0, "history": [{"hash": "…", "date": "…", "author": "…", "subject": "…", "files": ["…"]}]
+}
+```
+
+With `-installed`/`-projects`, an array of `{"name", "path", "report"}`, or
+`{"name", "path", "error"}` for a target that couldn't be audited.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | PASS: nothing above low |
+| `1` | REVIEW: a medium or high finding |
+| `2` | BLOCK: a critical finding |
+| `3` | Error (bad usage, unreadable target, failed fetch) |
+
+With `-installed`/`-projects`, the worst result across all targets; any
+target that errored makes it `3`.
+
+## Installed targets
 
 `-installed` covers:
 
@@ -32,30 +137,13 @@ go build -o skill-audit .
 Symlinks in your own config folders (rules, commands) are resolved, so the
 real file is scanned. Inside skills, scanning never follows symlinks.
 
-```sh
-./skill-audit -projects ~/workspace     # agent config in every repo under a folder
-./skill-audit -installed -projects ~/workspace
-```
+## Projects
 
-`-projects` finds `.cursor/` and `.claude/` folders and the files agents load
-on their own (`.mcp.json`, `CLAUDE.md`, `AGENTS.md`, `.cursorrules`) in every
-repo, skipping dependency and build folders. Opening a cloned repo loads its
-rules, so this is where a booby-trapped repo shows up.
-
-Snippets never carry credentials: auth headers, token/key/secret/password
-fields, URL passwords and well-known key formats are shown as `[redacted]`,
-and encoded blobs as a short prefix and their length.
-
-A baseline entry is the target's name, rule, file and the flagged code, not
-the line number. Edits elsewhere and plugin version bumps don't resurface
-accepted findings; a change to the flagged code or a new advisory does.
-Baselines for single targets are per target.
-
-For more lockfile formats (yarn, pnpm, poetry, Cargo, go.sum), install
-osv-scanner: `brew install osv-scanner`, or
-`go install github.com/google/osv-scanner/v2/cmd/osv-scanner@latest`.
-
-Exit codes: `0` pass, `1` review, `2` block, `3` error.
+`-projects <dir>` finds `.cursor/` and `.claude/` folders and the files agents
+load on their own (`.mcp.json`, `CLAUDE.md`, `AGENTS.md`, `.cursorrules`) in
+every repo under `<dir>`, skipping dependency, build and other hidden folders.
+Opening a cloned repo loads its rules, so this is where a booby-trapped repo
+shows up.
 
 ## What it checks
 
@@ -84,13 +172,30 @@ Exit codes: `0` pass, `1` review, `2` block, `3` error.
    otherwise skill-audit sends the pinned versions from `package-lock.json` and
    `requirements*.txt` to osv.dev itself, with nothing to install. Either way,
    package names and versions leave your machine; `-offline` turns the lookup off.
+   For more lockfile formats (yarn, pnpm, poetry, Cargo, go.sum), install
+   osv-scanner: `brew install osv-scanner`, or
+   `go install github.com/google/osv-scanner/v2/cmd/osv-scanner@latest`.
 5. **Report.** Severity and `file:line` for every finding, with snippets that
    show invisible characters escaped. Verdict: any critical → BLOCK, medium or
    high → REVIEW, otherwise PASS.
 
-Documentation and code comments that only *mention* a risky thing score one
-level lower than code that does it. `echo` lines are not exempt, since
-`echo ok; curl … | sh` would be a trivial bypass.
+### Scoring
+
+- Documentation and code comments that only *mention* a risky thing score one
+  level lower than code that does it. `echo` lines are not exempt, since
+  `echo ok; curl … | sh` would be a trivial bypass.
+- Findings in test files (test folders, `*.test.*`, `*_test.*`, `test_*`) score
+  one level lower: test data legitimately holds hostile strings. They're still
+  shown, since a file named like a test can still be code.
+- npm install hooks inside bundled `node_modules` are low: those packages are
+  already installed, and their hooks run only on a rebuild.
+
+### Secrets in reports
+
+Snippets never carry credentials: auth headers, token/key/secret/password
+fields, URL passwords and well-known key formats (AWS, GitHub, GitLab,
+OpenAI-style, Slack, JWTs, private keys) are shown as `[redacted]`, and
+encoded blobs as a short prefix and their length.
 
 ## Limits
 
@@ -100,8 +205,6 @@ level lower than code that does it. `echo` lines are not exempt, since
   skill is safe.
 - An LLM reading the findings can be prompt-injected by the skill itself,
   so read flagged lines yourself.
-- `--history` assumes a single-segment ref in GitHub `tree/` URLs. For branches
-  with `/` in the name, pass the plain repo URL.
 
 ## Development
 

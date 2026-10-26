@@ -1,3 +1,3 @@
 module skill-audit
 
-go 1.27.2
+go 1.24
