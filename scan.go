@@ -34,6 +34,26 @@ var (
 		{0xce, 0xfa, 0xed, 0xfe}, {0xcf, 0xfa, 0xed, 0xfe},
 		{0xca, 0xfe, 0xba, 0xbe},
 	}
+	// _secretPatterns mask credentials in snippets: a report (or its JSON in
+	// CI logs) must never carry the secrets of the config it scanned.
+	_secretPatterns = []struct {
+		re   *regexp.Regexp
+		repl string
+	}{
+		{regexp.MustCompile(`(?i)(\b(?:basic|bearer|token)\s+)[A-Za-z0-9._~+/=-]{8,}`), "${1}[redacted]"},
+		{
+			regexp.MustCompile(`(?i)("?[a-z0-9_-]*(?:token|secret|password|passwd|api[_-]?key|apikey|auth|credential|private[_-]?key)[a-z0-9_-]*"?` +
+				`\s*[:=]\s*"?(?:(?:basic|bearer|token)\s+)?)[^"\s,}&]{6,}`),
+			"${1}[redacted]",
+		},
+		{regexp.MustCompile(`(://[^/\s:@]+:)[^/\s@]+@`), "${1}[redacted]@"},
+		{
+			regexp.MustCompile(`\b(?:(?:AKIA|ASIA)[A-Z0-9]{16}|gh[pousr]_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}` +
+				`|xox[abprs]-[A-Za-z0-9-]{10,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})`),
+			"[redacted]",
+		},
+		{regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`), "[redacted]"},
+	}
 	_htmlComment       = regexp.MustCompile(`(?s)<!--(.*?)-->`)
 	_commentImperative = regexp.MustCompile(`(?i)\b(run|execute|curl|wget|send|upload|fetch|ignore|instructions?|assistant)\b|https?://`)
 	_scriptExts        = map[string]bool{
@@ -350,7 +370,16 @@ func escapeInvisible(s string) string {
 	if tags > 0 {
 		fmt.Fprintf(&b, "[%d hidden tag chars]", tags)
 	}
-	return b.String()
+	return redact(b.String())
+}
+
+// redact masks credentials, keeping what names them (the header scheme,
+// the field name), so the finding still says what was there.
+func redact(s string) string {
+	for _, p := range _secretPatterns {
+		s = p.re.ReplaceAllString(s, p.repl)
+	}
+	return s
 }
 
 func isTag(r rune) bool { return r >= 0xE0000 && r <= 0xE007F }

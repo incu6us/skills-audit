@@ -265,6 +265,8 @@ func (r rule) match(file string, kind scope, line int, text string) []Finding {
 		switch {
 		case r.severity == Info:
 			f.Snippet = escapeInvisible(m)
+		case r.id == "encoded-blob": // may itself be a credential
+			f.Snippet = escapeInvisible(m[:8]) + fmt.Sprintf("… (%d chars)", len(m))
 		case r.id == "unicode-tag":
 			f.Message += fmt.Sprintf(", decoded: %q", decodeTags(text))
 		}

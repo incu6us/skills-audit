@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,8 +14,22 @@ import (
 
 const _skillSearchDepth = 3 // skills/<name>, or nested like skills/synced/<id>/<name>
 
-// _agentSkillDirs are other agents' skill folders, relative to home.
-var _agentSkillDirs = []string{".cursor/skills", ".codex/skills", ".agents/skills"}
+var (
+	// _agentSkillDirs are other agents' skill folders, relative to home.
+	_agentSkillDirs = []string{".cursor/skills", ".codex/skills", ".agents/skills"}
+
+	// _projectAgentFiles are files an agent loads from a repo on its own.
+	_projectAgentFiles = map[string]bool{
+		".mcp.json": true, "CLAUDE.md": true, "AGENTS.md": true, ".cursorrules": true, ".windsurfrules": true,
+	}
+	// _projectAgentDirs are agent config folders in a repo: rules, hooks, MCP, skills.
+	_projectAgentDirs = map[string]bool{".cursor": true, ".claude": true}
+	// _projectSkipDirs never hold a project's own agent config.
+	_projectSkipDirs = map[string]bool{
+		"node_modules": true, "vendor": true, "dist": true, "build": true, "target": true,
+		"venv": true, "__pycache__": true,
+	}
+)
 
 // target is one skill or plugin to audit.
 type target struct {
@@ -68,6 +83,14 @@ func installedTargets(home, configDir string) ([]target, error) {
 		out = append(out, target{Name: name, Path: real})
 	}
 
+	// User config folders: one target per file, symlinks resolved here, since
+	// these are the user's own files (scanning never follows links).
+	addFiles := func(label, dir string) {
+		for _, name := range entries(dir, false) {
+			add(label+"/"+name, filepath.Join(dir, name))
+		}
+	}
+
 	for _, root := range roots {
 		if info, err := os.Stat(root); err != nil || !info.IsDir() {
 			continue // ~/.claude.json and friends
@@ -81,7 +104,32 @@ func installedTargets(home, configDir string) ([]target, error) {
 		for _, name := range sortedKeys(plugins) {
 			add(label+"/plugins/"+name, plugins[name])
 		}
+		for _, f := range []string{"settings.json", "settings.local.json"} { // hooks live here
+			add(label+"/config/"+f, filepath.Join(root, f))
+		}
+		addFiles(label+"/commands", filepath.Join(root, "commands"))
+		addFiles(label+"/agents", filepath.Join(root, "agents"))
 	}
+
+	// Cursor: built-in skills, user rules, commands, agents, plugins,
+	// team-managed config, and the hooks and MCP servers it runs.
+	cursor := filepath.Join(home, ".cursor")
+	builtin := filepath.Join(cursor, "skills-cursor")
+	for _, dir := range findSkills(builtin, _skillSearchDepth) {
+		add("cursor/builtin/"+relPath(builtin, dir), dir)
+	}
+	for _, d := range []string{"rules", "commands", "agents"} {
+		addFiles("cursor/"+d, filepath.Join(cursor, d))
+	}
+	for _, d := range []string{"plugins", "managed"} {
+		for _, name := range entries(filepath.Join(cursor, d), true) {
+			add("cursor/"+d+"/"+name, filepath.Join(cursor, d, name))
+		}
+	}
+	for _, f := range []string{"hooks.json", "mcp.json"} {
+		add("cursor/config/"+f, filepath.Join(cursor, f))
+	}
+
 	for _, d := range _agentSkillDirs {
 		base := filepath.Join(home, filepath.FromSlash(d))
 		label := strings.TrimPrefix(strings.Split(d, "/")[0], ".")
@@ -92,6 +140,58 @@ func installedTargets(home, configDir string) ([]target, error) {
 
 	slices.SortFunc(out, func(a, b target) int { return cmp.Compare(a.Name, b.Name) })
 	return out, nil
+}
+
+// entries lists a folder's visible files (dirs false) or subfolders (dirs
+// true), following symlinks.
+func entries(dir string, dirs bool) []string {
+	list, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range list {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		info, err := os.Stat(filepath.Join(dir, e.Name()))
+		if err == nil && info.IsDir() == dirs && (dirs || info.Mode().IsRegular()) {
+			out = append(out, e.Name())
+		}
+	}
+	return out
+}
+
+// projectTargets finds agent config in every project under root: .cursor
+// and .claude folders, and files agents load on their own (.mcp.json,
+// CLAUDE.md, AGENTS.md, .cursorrules). A cloned repo's rules load as soon
+// as it's opened. Dependency and build folders, other hidden folders and
+// symlinked folders are not entered.
+func projectTargets(root string) ([]target, error) {
+	root, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return nil, err
+	}
+	var out []target
+	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // unreadable folder: skip it, keep walking
+		}
+		name := d.Name()
+		switch {
+		case p == root:
+		case d.IsDir() && _projectAgentDirs[name]:
+			out = append(out, target{Name: "projects/" + relPath(root, p), Path: p})
+			return filepath.SkipDir
+		case d.IsDir() && (_projectSkipDirs[name] || strings.HasPrefix(name, ".")):
+			return filepath.SkipDir
+		case d.Type().IsRegular() && _projectAgentFiles[name]:
+			out = append(out, target{Name: "projects/" + relPath(root, p), Path: p})
+		}
+		return nil
+	})
+	slices.SortFunc(out, func(a, b target) int { return cmp.Compare(a.Name, b.Name) })
+	return out, err
 }
 
 // findSkills returns the directories holding a SKILL.md, following symlinks.

@@ -19,9 +19,32 @@ go build -o skill-audit .
 ./skill-audit -installed -baseline ~/.skill-audit-baseline.json         # later: only new findings
 ```
 
-`-installed` covers every `~/.claude*` config dir and `CLAUDE_CONFIG_DIR` (skills,
-and each plugin's active install from `installed_plugins.json`), plus
-`~/.cursor/skills`, `~/.codex/skills` and `~/.agents/skills`.
+`-installed` covers:
+
+- every `~/.claude*` config dir and `CLAUDE_CONFIG_DIR`: skills, each plugin's
+  active install (from `installed_plugins.json`), `settings.json` (hooks),
+  `commands/` and `agents/`
+- Cursor: built-in skills (`skills-cursor`, shown as `cursor/builtin/…`),
+  `rules/`, `commands/`, `agents/`, `plugins/`, team-managed config, and the
+  hooks and MCP servers in `hooks.json` and `mcp.json`
+- `~/.cursor/skills`, `~/.codex/skills` and `~/.agents/skills`
+
+Symlinks in your own config folders (rules, commands) are resolved, so the
+real file is scanned. Inside skills, scanning never follows symlinks.
+
+```sh
+./skill-audit -projects ~/workspace     # agent config in every repo under a folder
+./skill-audit -installed -projects ~/workspace
+```
+
+`-projects` finds `.cursor/` and `.claude/` folders and the files agents load
+on their own (`.mcp.json`, `CLAUDE.md`, `AGENTS.md`, `.cursorrules`) in every
+repo, skipping dependency and build folders. Opening a cloned repo loads its
+rules, so this is where a booby-trapped repo shows up.
+
+Snippets never carry credentials: auth headers, token/key/secret/password
+fields, URL passwords and well-known key formats are shown as `[redacted]`,
+and encoded blobs as a short prefix and their length.
 
 A baseline entry is the target's name, rule, file and the flagged code, not
 the line number. Edits elsewhere and plugin version bumps don't resurface

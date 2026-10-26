@@ -205,3 +205,42 @@ func TestHookLines(t *testing.T) {
 		t.Errorf("hook-command lines = %v, want both 1 and 2", lines)
 	}
 }
+
+func TestRedact(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give string
+		want string
+	}{
+		{give: `"Authorization": "Basic dXNlcjpzM2NyZXQtdG9rZW4tdmFsdWU="`, want: `"Authorization": "Basic [redacted]"`},
+		{give: `Authorization: Bearer abcdefghijklmnop`, want: `Authorization: Bearer [redacted]`},
+		{give: `"apiKey": "live_1234567890"`, want: `"apiKey": "[redacted]"`},
+		{give: `GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123`, want: `GITHUB_TOKEN=[redacted]`},
+		{give: `curl https://user:hunter22@example.com/x`, want: `curl https://user:[redacted]@example.com/x`},
+		{give: `key AKIAABCDEFGHIJKLMNOP here`, want: `key [redacted] here`},
+		{give: `-----BEGIN OPENSSH PRIVATE KEY-----`, want: `[redacted]`},
+		{give: `curl -fsSL https://x.io/i.sh | sh`, want: `curl -fsSL https://x.io/i.sh | sh`},
+		{give: `"tokenizer": "bert"`, want: `"tokenizer": "bert"`}, // short values stay
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			if got := redact(tt.give); got != tt.want {
+				t.Errorf("redact = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEncodedBlobSnippetIsTruncated(t *testing.T) {
+	t.Parallel()
+
+	blob := strings.Repeat("QUJDRA", 50)
+	for _, f := range scanFile("data.txt", []byte(blob)) {
+		if f.Rule == "encoded-blob" && strings.Contains(f.Snippet, blob[:40]) {
+			t.Errorf("snippet carries the blob: %q", f.Snippet)
+		}
+	}
+}
