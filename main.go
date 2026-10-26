@@ -1,4 +1,4 @@
-// Command skill-audit statically checks an AI agent skill for hidden
+// Command skills-audit statically checks an AI agent skill for hidden
 // instructions, data exfiltration, remote code execution and risky
 // dependencies. It never runs the skill's code.
 package main
@@ -25,7 +25,7 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
-	flags := flag.NewFlagSet("skill-audit", flag.ContinueOnError)
+	flags := flag.NewFlagSet("skills-audit", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	asJSON := flags.Bool("json", false, "print the report as JSON")
 	verbose := flags.Bool("v", false, "also print info findings (every URL and email); with -installed, list passing targets")
@@ -36,8 +36,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	baselinePath := flags.String("baseline", "", "hide findings already accepted in this `file`")
 	writeBaseline := flags.String("write-baseline", "", "accept every current finding: save their fingerprints to this `file`")
 	flags.Usage = func() {
-		_, _ = fmt.Fprint(stderr, "usage: skill-audit [flags] <path | https://github.com/owner/repo[/tree/ref/dir]>\n"+
-			"       skill-audit [flags] -installed [-projects dir]\n\n"+
+		_, _ = fmt.Fprint(stderr, "usage: skills-audit [flags] <path | https://github.com/owner/repo[/tree/ref/dir]>\n"+
+			"       skills-audit [flags] -installed [-projects dir]\n\n"+
 			"exit codes: 0 pass, 1 review, 2 block, 3 error\n\n")
 		flags.PrintDefaults()
 	}
@@ -54,7 +54,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	fail := func(err error) int {
-		_, _ = fmt.Fprintln(stderr, "skill-audit:", err)
+		_, _ = fmt.Fprintln(stderr, "skills-audit:", err)
 		return exitError
 	}
 	targets := []target{{Path: flags.Arg(0)}}
@@ -113,7 +113,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return fail(err)
 		}
-		_, _ = fmt.Fprintf(stderr, "skill-audit: accepted %d findings into %s\n", n, *writeBaseline)
+		_, _ = fmt.Fprintf(stderr, "skills-audit: accepted %d findings into %s\n", n, *writeBaseline)
 	}
 
 	var err error

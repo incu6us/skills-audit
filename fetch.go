@@ -96,7 +96,7 @@ func fetchRemote(ctx context.Context, r remote, history int) (_ *source, err err
 	if strings.HasPrefix(r.ref, "-") || (r.sub != "" && !filepath.IsLocal(r.sub)) {
 		return nil, fmt.Errorf("invalid ref or path for %s", r.url)
 	}
-	dir, err := os.MkdirTemp("", "skill-audit-")
+	dir, err := os.MkdirTemp("", "skills-audit-")
 	if err != nil {
 		return nil, err
 	}

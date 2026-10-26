@@ -1,4 +1,4 @@
-# skill-audit
+# skills-audit
 
 Static security check for AI agent skills, plugins and agent config (Claude
 Code, Cursor, Codex, ...). It reads files and never runs any of their code.
@@ -6,19 +6,19 @@ Code, Cursor, Codex, ...). It reads files and never runs any of their code.
 ## Install
 
 ```sh
-go build -o skill-audit .          # Go 1.24+, no dependencies
+go build -o skills-audit .          # Go 1.27.2+, no dependencies
 ```
 
 ## Usage
 
 ```
-skill-audit [flags] <target>                       # one skill, plugin or repo
-skill-audit [flags] -installed [-projects <dir>]   # everything installed, and/or every repo under dir
-skill-audit [flags] -projects <dir>
+skills-audit [flags] <target>                       # one skill, plugin or repo
+skills-audit [flags] -installed [-projects <dir>]   # everything installed, and/or every repo under dir
+skills-audit [flags] -projects <dir>
 ```
 
 **Flags go before the target.** Go's flag parsing stops at the first non-flag
-argument: in `skill-audit ./x -json`, the `-json` is ignored.
+argument: in `skills-audit ./x -json`, the `-json` is ignored.
 
 ### Targets
 
@@ -51,22 +51,22 @@ repo URL.
 ### Examples
 
 ```sh
-./skill-audit ~/.claude/skills/some-skill
-./skill-audit https://github.com/owner/repo/tree/main/skills/some-skill
-./skill-audit -history 10 -json github.com/owner/repo
-./skill-audit -offline ./local-skill                 # no CVE lookup
+./skills-audit ~/.claude/skills/some-skill
+./skills-audit https://github.com/owner/repo/tree/main/skills/some-skill
+./skills-audit -history 10 -json github.com/owner/repo
+./skills-audit -offline ./local-skill                 # no CVE lookup
 
-./skill-audit -installed                             # one line per target needing attention
-./skill-audit -installed -v                          # ...and the passing ones
-./skill-audit -projects ~/workspace                  # agent config in every repo
-./skill-audit -installed -projects ~/workspace -json > audit.json
+./skills-audit -installed                             # one line per target needing attention
+./skills-audit -installed -v                          # ...and the passing ones
+./skills-audit -projects ~/workspace                  # agent config in every repo
+./skills-audit -installed -projects ~/workspace -json > audit.json
 ```
 
 ### Baselines: only what's new
 
 ```sh
-./skill-audit -installed -write-baseline ~/.skill-audit-baseline.json   # after reviewing: accept
-./skill-audit -installed -baseline ~/.skill-audit-baseline.json         # later: only new findings
+./skills-audit -installed -write-baseline ~/.skills-audit-baseline.json   # after reviewing: accept
+./skills-audit -installed -baseline ~/.skills-audit-baseline.json         # later: only new findings
 ```
 
 A baseline entry is the target's name, rule, file and the flagged code, not
@@ -89,7 +89,7 @@ worst first, with the command that shows its details:
 ```
 VERDICT CRIT HIGH  MED  LOW  TARGET
 REVIEW     0    2    1   15  claude/skills/terraform-skill
-                                  skill-audit "/Users/you/.claude/skills/terraform-skill"
+                                  skills-audit "/Users/you/.claude/skills/terraform-skill"
 
 49 targets: 0 block, 1 review, 48 pass; -v lists passing targets
 ```
@@ -169,7 +169,7 @@ shows up.
 4. **Dependencies.** npm install hooks, non-registry dependencies, `setup.py`,
    custom pip indexes and unpinned requirements. Known CVEs come from the OSV
    database: through `osv-scanner` when installed (every ecosystem it supports),
-   otherwise skill-audit sends the pinned versions from `package-lock.json` and
+   otherwise skills-audit sends the pinned versions from `package-lock.json` and
    `requirements*.txt` to osv.dev itself, with nothing to install. Either way,
    package names and versions leave your machine; `-offline` turns the lookup off.
    For more lockfile formats (yarn, pnpm, poetry, Cargo, go.sum), install

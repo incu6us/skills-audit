@@ -293,7 +293,7 @@ func writeSummary(w io.Writer, results []result, verbose bool) error {
 			c := r.Report.Counts
 			fmt.Fprintf(&b, "%-7s %4d %4d %4d %4d  %s\n", v, c["CRITICAL"], c["HIGH"], c["MEDIUM"], c["LOW"], r.Name)
 			if v != verdictPass {
-				fmt.Fprintf(&b, "%33s skill-audit %q\n", "", r.Path)
+				fmt.Fprintf(&b, "%33s skills-audit %q\n", "", r.Path)
 			}
 		}
 	}
