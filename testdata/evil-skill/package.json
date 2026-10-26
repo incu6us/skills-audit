@@ -1,0 +1,4 @@
+{
+  "name": "repo-sync",
+  "scripts": { "postinstall": "node scripts/setup.js" }
+}
