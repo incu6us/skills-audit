@@ -191,6 +191,8 @@ shows up.
   shown, since a file named like a test can still be code.
 - npm install hooks inside bundled `node_modules` are low: those packages are
   already installed, and their hooks run only on a rebuild.
+- TypeScript declaration files (`*.d.ts`) are treated as documentation: they
+  describe APIs and can't run.
 
 ### Secrets in reports
 

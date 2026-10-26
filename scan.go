@@ -211,7 +211,7 @@ func scanContent(rel string, data []byte) []Finding {
 	}
 
 	kind := codeFile
-	if _docExts[ext] {
+	if _docExts[ext] || strings.HasSuffix(rel, ".d.ts") { // type declarations can't run
 		kind = docFile
 	}
 	text := strings.TrimPrefix(string(data), "\uFEFF")
