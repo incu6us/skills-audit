@@ -6,7 +6,9 @@ Code, Cursor, Codex, ...). It reads files and never runs any of their code.
 ## Install
 
 ```sh
-go build -o skills-audit .          # Go 1.27.2+, no dependencies
+go install github.com/incu6us/skills-audit@latest   # Go 1.27.2+, no dependencies
+# or, from a clone:
+go build -o skills-audit .
 ```
 
 ## Usage
