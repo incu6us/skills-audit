@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -132,9 +133,38 @@ func checkSymlink(base, p, rel string) []Finding {
 	}}
 }
 
-// scanFile checks one file. Its extension picks the rule set: prose
-// (.md, .txt, ...) gets the instruction rules, everything else the code rules.
+// scanFile checks one file. Findings in test files score one level lower:
+// test data legitimately holds hostile strings (bidi characters, fake IPs).
+// Lower, not exempt, since a file named like a test can still be code.
 func scanFile(rel string, data []byte) []Finding {
+	findings := scanContent(rel, data)
+	if isTestFile(rel) {
+		for i := range findings {
+			findings[i].Severity = max(Info, findings[i].Severity-1)
+			findings[i].Message += " (test file)"
+		}
+	}
+	return findings
+}
+
+// isTestFile matches test directories and test file names across languages.
+func isTestFile(rel string) bool {
+	for _, dir := range strings.Split(path.Dir(rel), "/") {
+		switch dir {
+		case "test", "tests", "__tests__", "spec", "specs", "testdata", "fixtures", "__mocks__":
+			return true
+		}
+	}
+	base := path.Base(rel)
+	return strings.Contains(base, ".test.") || strings.Contains(base, ".spec.") ||
+		strings.HasPrefix(base, "test_") ||
+		strings.HasSuffix(strings.TrimSuffix(base, path.Ext(base)), "_test") ||
+		strings.HasSuffix(strings.TrimSuffix(base, path.Ext(base)), "_spec")
+}
+
+// scanContent picks the rule set by extension: prose (.md, .txt, ...) gets
+// the instruction rules, everything else the code rules.
+func scanContent(rel string, data []byte) []Finding {
 	if filepath.Base(rel) == ".gitignore" { // ponytail: lists paths, can't run anything
 		return nil
 	}

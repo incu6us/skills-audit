@@ -44,13 +44,20 @@ func npmFindings(rel, text string) []Finding {
 		}}
 	}
 
+	// A bundled dependency is already installed: its hooks run only if
+	// someone rebuilds or reinstalls it, so they are inventory, not a threat.
+	hookSev, depSev, hookMsg := High, Medium, "npm runs the %q script on install"
+	if strings.Contains("/"+rel, "/node_modules/") {
+		hookSev, depSev, hookMsg = Low, Low, "bundled dependency's %q script: runs only on npm rebuild or reinstall"
+	}
+
 	var out []Finding
 	for _, hook := range _npmInstallHooks {
 		if cmd, ok := pkg.Scripts[hook]; ok {
 			out = append(out, Finding{
-				Rule: "install-hook", Category: "dependency", Severity: High, File: rel,
+				Rule: "install-hook", Category: "dependency", Severity: hookSev, File: rel,
 				Line:    lineOf(text, `"`+hook+`"`),
-				Message: fmt.Sprintf("npm runs the %q script on install", hook),
+				Message: fmt.Sprintf(hookMsg, hook),
 				Snippet: escapeInvisible(cmd),
 			})
 		}
@@ -59,7 +66,7 @@ func npmFindings(rel, text string) []Finding {
 		for name, spec := range deps {
 			if strings.ContainsAny(spec, ":/") {
 				out = append(out, Finding{
-					Rule: "non-registry-dep", Category: "dependency", Severity: Medium, File: rel,
+					Rule: "non-registry-dep", Category: "dependency", Severity: depSev, File: rel,
 					Line:    lineOf(text, `"`+name+`"`),
 					Message: fmt.Sprintf("%s comes from outside the npm registry", name),
 					Snippet: escapeInvisible(spec),
