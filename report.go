@@ -26,6 +26,7 @@ type Report struct {
 	Findings  []Finding      `json:"findings"`
 	Endpoints []Endpoint     `json:"endpoints"`
 	Notes     []string       `json:"notes,omitempty"`
+	Baselined int            `json:"baselined,omitempty"` // findings hidden by the baseline
 	History   []Commit       `json:"history,omitempty"`
 }
 
@@ -47,10 +48,11 @@ func (r *Report) setFindings(findings []Finding) {
 			cmp.Compare(a.Rule, b.Rule),
 		)
 	})
-	// The same rule can fire on a JSON line and on the command decoded from it.
+	// The same rule can fire on a JSON line and on the command decoded from
+	// it. Inventory (info, auto-run) lists distinct values and is never merged.
 	r.Findings = slices.CompactFunc(findings, func(a, b Finding) bool {
 		return a.Rule == b.Rule && a.File == b.File && a.Line == b.Line && a.Severity == b.Severity &&
-			(a.Severity != Info || a.Snippet == b.Snippet)
+			a.Severity != Info && a.Category != "auto-run"
 	})
 	r.Counts = make(map[string]int)
 	for _, f := range r.Findings {
@@ -108,11 +110,11 @@ func endpoints(findings []Finding) []Endpoint {
 	return out
 }
 
-func (r *Report) writeJSON(w io.Writer) error {
+func writeJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
-	return enc.Encode(r)
+	return enc.Encode(v)
 }
 
 func (r *Report) writeText(w io.Writer, verbose bool) error {

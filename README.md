@@ -11,6 +11,23 @@ go build -o skill-audit .
 ./skill-audit -offline ./local-skill    # no CVE lookup
 ```
 
+### Everything installed, and only what's new
+
+```sh
+./skill-audit -installed                      # one line per skill/plugin needing attention
+./skill-audit -installed -write-baseline ~/.skill-audit-baseline.json   # after reviewing: accept
+./skill-audit -installed -baseline ~/.skill-audit-baseline.json         # later: only new findings
+```
+
+`-installed` covers every `~/.claude*` config dir and `CLAUDE_CONFIG_DIR` (skills,
+and each plugin's active install from `installed_plugins.json`), plus
+`~/.cursor/skills`, `~/.codex/skills` and `~/.agents/skills`.
+
+A baseline entry is the target's name, rule, file and the flagged code, not
+the line number. Edits elsewhere and plugin version bumps don't resurface
+accepted findings; a change to the flagged code or a new advisory does.
+Baselines for single targets are per target.
+
 For more lockfile formats (yarn, pnpm, poetry, Cargo, go.sum), install
 osv-scanner: `brew install osv-scanner`, or
 `go install github.com/google/osv-scanner/v2/cmd/osv-scanner@latest`.

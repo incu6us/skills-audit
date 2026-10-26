@@ -181,3 +181,21 @@ func FuzzScanFile(f *testing.F) {
 		}
 	})
 }
+
+func TestHookLines(t *testing.T) {
+	t.Parallel()
+
+	give := "{\"hooks\":{\"A\":[{\"command\":\"node hooks/session-start-seen-skills.mjs\"}],\n" +
+		"\"B\":[{\"command\":\"node hooks/session-end-cleanup.mjs\"}]}}"
+	rep := &Report{}
+	rep.setFindings(scanFile("hooks.json", []byte(give)))
+	lines := map[int]bool{}
+	for _, f := range rep.Findings {
+		if f.Rule == "hook-command" {
+			lines[f.Line] = true
+		}
+	}
+	if !lines[1] || !lines[2] {
+		t.Errorf("hook-command lines = %v, want both 1 and 2", lines)
+	}
+}

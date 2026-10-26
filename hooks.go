@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 )
@@ -29,8 +30,8 @@ func autoRunFindings(rel, text string) []Finding {
 		switch v := v.(type) {
 		case map[string]any:
 			out = append(out, autoRunEntry(rel, text, v, keys)...)
-			for k, child := range v {
-				walk(child, append(slices.Clip(keys), k))
+			for _, k := range slices.Sorted(maps.Keys(v)) {
+				walk(v[k], append(slices.Clip(keys), k))
 			}
 		case []any:
 			for _, child := range v {
@@ -84,16 +85,15 @@ func autoRun(rel, text, rule string, kind scope, message, value string) []Findin
 	return out
 }
 
-// jsonFragment is the start of s as it appears encoded in a JSON file,
-// for finding its line.
+// jsonFragment is s as it appears encoded in a JSON file, for finding its
+// line. The whole value: commands often share a long prefix.
 func jsonFragment(s string) string {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
 	_ = enc.Encode(s) // a string always encodes
 	frag := strings.TrimSpace(b.String())
-	frag = frag[1 : len(frag)-1]
-	return frag[:min(len(frag), 40)]
+	return frag[1 : len(frag)-1]
 }
 
 func keyAfter(keys []string, k string) (string, bool) {

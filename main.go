@@ -28,11 +28,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("skill-audit", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	asJSON := flags.Bool("json", false, "print the report as JSON")
-	verbose := flags.Bool("v", false, "also print info findings (every URL and email)")
+	verbose := flags.Bool("v", false, "also print info findings (every URL and email); with -installed, list passing targets")
 	history := flags.Int("history", 0, "list the last `N` commits that touched the skill")
 	offline := flags.Bool("offline", false, "skip the dependency CVE lookup, the only network call besides fetching a remote target")
+	installed := flags.Bool("installed", false, "audit every installed skill and plugin (~/.claude*, CLAUDE_CONFIG_DIR, ~/.cursor, ~/.codex, ~/.agents)")
+	baselinePath := flags.String("baseline", "", "hide findings already accepted in this `file`")
+	writeBaseline := flags.String("write-baseline", "", "accept every current finding: save their fingerprints to this `file`")
 	flags.Usage = func() {
-		_, _ = fmt.Fprint(stderr, "usage: skill-audit [flags] <path | https://github.com/owner/repo[/tree/ref/dir]>\n\n"+
+		_, _ = fmt.Fprint(stderr, "usage: skill-audit [flags] <path | https://github.com/owner/repo[/tree/ref/dir]>\n"+
+			"       skill-audit [flags] -installed\n\n"+
 			"exit codes: 0 pass, 1 review, 2 block, 3 error\n\n")
 		flags.PrintDefaults()
 	}
@@ -42,27 +46,82 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		return exitError
 	}
-	if flags.NArg() != 1 {
+	if *installed == (flags.NArg() == 1) || flags.NArg() > 1 {
 		flags.Usage()
 		return exitError
+	}
+
+	fail := func(err error) int {
+		_, _ = fmt.Fprintln(stderr, "skill-audit:", err)
+		return exitError
+	}
+	targets := []target{{Path: flags.Arg(0)}}
+	if *installed {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fail(err)
+		}
+		if targets, err = installedTargets(home, os.Getenv("CLAUDE_CONFIG_DIR")); err != nil {
+			return fail(err)
+		}
+		*history = 0
+	}
+	var accepted baseline
+	if *baselinePath != "" {
+		var err error
+		if accepted, err = loadBaseline(*baselinePath); err != nil {
+			return fail(err)
+		}
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	rep, err := audit(ctx, flags.Arg(0), *history, *offline)
-	if err == nil {
-		if *asJSON {
-			err = rep.writeJSON(stdout)
-		} else {
-			err = rep.writeText(stdout, *verbose)
+	results := make([]result, len(targets))
+	var fingerprints []string
+	for i, t := range targets {
+		results[i].target = t
+		rep, err := audit(ctx, t.Path, *history, *offline)
+		if err != nil {
+			results[i].Error = err.Error()
+			continue
 		}
+		fingerprints = append(fingerprints, rep.fingerprints(t.Name)...)
+		rep.applyBaseline(t.Name, accepted)
+		results[i].Report = rep
+	}
+
+	if !*installed && results[0].Error != "" {
+		return fail(errors.New(results[0].Error))
+	}
+	if *writeBaseline != "" {
+		n, err := saveBaseline(*writeBaseline, fingerprints)
+		if err != nil {
+			return fail(err)
+		}
+		_, _ = fmt.Fprintf(stderr, "skill-audit: accepted %d findings into %s\n", n, *writeBaseline)
+	}
+
+	var err error
+	switch {
+	case *installed && *asJSON:
+		err = writeJSON(stdout, results)
+	case *installed:
+		err = writeSummary(stdout, results, *verbose)
+	case *asJSON:
+		err = writeJSON(stdout, results[0].Report)
+	default:
+		err = results[0].Report.writeText(stdout, *verbose)
 	}
 	if err != nil {
-		_, _ = fmt.Fprintln(stderr, "skill-audit:", err)
-		return exitError
+		return fail(err)
 	}
-	return rep.exitCode()
+
+	code := exitPass
+	for _, r := range results {
+		code = max(code, r.exitCode())
+	}
+	return code
 }
 
 func audit(ctx context.Context, target string, history int, offline bool) (*Report, error) {
