@@ -5,11 +5,22 @@ Code, Cursor, Codex, ...). It reads files and never runs any of their code.
 
 ## Install
 
+With Homebrew (macOS and Linux):
+
+```sh
+brew install incu6us/homebrew-tap/skills-audit
+```
+
+Or download a binary for Linux, macOS or Windows from the
+[releases page](https://github.com/incu6us/skills-audit/releases). With Go:
+
 ```sh
 go install github.com/incu6us/skills-audit@latest   # Go 1.27.2+, no dependencies
 # or, from a clone:
 go build -o skills-audit .
 ```
+
+`skills-audit -version` prints the installed version.
 
 ## Usage
 
@@ -48,6 +59,7 @@ repo URL.
 | `-history <N>` | List the last N commits that touched the target, with authors and files. Single targets only; ignored with `-installed`/`-projects`. |
 | `-baseline <file>` | Hide findings already accepted in `<file>`. |
 | `-write-baseline <file>` | Accept every current finding: save their fingerprints to `<file>`. Still prints the report and exits with the real verdict. |
+| `-version` | Print the version and exit. |
 | `-h` | Show usage. |
 
 ### Examples

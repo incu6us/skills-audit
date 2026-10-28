@@ -1,0 +1,66 @@
+version: 2
+
+env:
+  - CGO_ENABLED=0
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - binary: skills-audit
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .ShortCommit }}
+
+archives:
+  - formats: [ tar.gz ]
+    format_overrides:
+      - goos: windows
+        formats: [ zip ]
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  prerelease: auto
+  # Re-running a release job would otherwise die on 422 already_exists.
+  mode: replace
+  github:
+    owner: incu6us
+    name: skills-audit
+
+homebrew_casks:
+  - name: skills-audit
+    repository:
+      owner: incu6us
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    commit_author:
+      name: incu6us
+      email: vyacheslavpryimak@gmail.com
+    homepage: "https://github.com/incu6us/skills-audit"
+    description: "Static security check for AI agent skills, plugins and agent config"
+    # The binaries are not signed/notarized, so Gatekeeper would quarantine them.
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/skills-audit"]
+          end
