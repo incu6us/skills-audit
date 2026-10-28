@@ -20,6 +20,12 @@ const (
 	exitError
 )
 
+// Set by GoReleaser through -ldflags; "dev" for a plain go build.
+var (
+	version = "dev"
+	commit  = "none"
+)
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -35,6 +41,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	projects := flags.String("projects", "", "audit agent config in every project under `dir` (.cursor, .claude, .mcp.json, CLAUDE.md, AGENTS.md, .cursorrules)")
 	baselinePath := flags.String("baseline", "", "hide findings already accepted in this `file`")
 	writeBaseline := flags.String("write-baseline", "", "accept every current finding: save their fingerprints to this `file`")
+	showVersion := flags.Bool("version", false, "print the version and exit")
 	flags.Usage = func() {
 		_, _ = fmt.Fprint(stderr, "usage: skills-audit [flags] <path | https://github.com/owner/repo[/tree/ref/dir]>\n"+
 			"       skills-audit [flags] -installed [-projects dir]\n\n"+
@@ -46,6 +53,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return exitPass
 		}
 		return exitError
+	}
+	if *showVersion {
+		_, _ = fmt.Fprintf(stdout, "skills-audit %s (%s)\n", version, commit)
+		return exitPass
 	}
 	multi := *installed || *projects != ""
 	if multi == (flags.NArg() == 1) || flags.NArg() > 1 {
