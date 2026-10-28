@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -43,8 +44,9 @@ func TestInstalledTargets(t *testing.T) {
 	active := filepath.Join(conf, "plugins", "cache", "mkt", "tool", "2.0.0")
 	mkSkill(filepath.Join(active, "skills", "inner"))
 	mkSkill(filepath.Join(conf, "plugins", "cache", "mkt", "tool", "1.0.0", "skills", "inner"))
+	activeJSON, _ := json.Marshal(active) // backslashes on Windows must be escaped
 	write(filepath.Join(conf, "plugins", "installed_plugins.json"),
-		`{"version":2,"plugins":{"tool@mkt":[{"scope":"user","installPath":"`+active+`"}]}}`)
+		`{"version":2,"plugins":{"tool@mkt":[{"scope":"user","installPath":`+string(activeJSON)+`}]}}`)
 	mkSkill(filepath.Join(home, ".cursor", "skills", "cur"))
 	write(filepath.Join(home, ".claude.json"), "{}")
 	write(filepath.Join(conf, "settings.json"), `{"hooks":{}}`)
